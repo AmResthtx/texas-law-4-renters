@@ -1,5 +1,6 @@
 .DS_Store
 .env
+case/
 token.txt
 analytics.db
 *.db

@@ -42,9 +42,23 @@ class RAGResponse:
     confidence_score: Optional[float] = None
 
 
+CASE_BRIEF_PATH = os.path.join(os.path.dirname(__file__), '..', 'case', 'CLAUDE.md')
+
+
+def _load_case_brief() -> str:
+    """Load the case brief if present."""
+    try:
+        if os.path.exists(CASE_BRIEF_PATH):
+            with open(CASE_BRIEF_PATH, 'r', encoding='utf-8') as f:
+                return f.read()
+    except Exception:
+        pass
+    return ""
+
+
 class LegalRAGPipeline:
     """RAG Pipeline specialized for legal document Q&A."""
-    
+
     def __init__(self):
         """Initialize the RAG pipeline."""
         self.embedder = get_embedder()
@@ -52,21 +66,23 @@ class LegalRAGPipeline:
         self.model_endpoint = settings.model_endpoint
         self.max_tokens = settings.max_tokens
         self.temperature = settings.temperature
-        
-        # Legal-specific context templates
-        self.system_prompt = """You are a specialized legal AI assistant. Your role is to provide accurate, 
-helpful answers based on the provided legal documents. Follow these guidelines:
 
-1. Only use information from the provided document context
-2. Cite specific sections or clauses when possible
-3. If the context doesn't contain enough information, say so explicitly
-4. Use precise legal terminology
-5. Provide clear, structured answers
-6. Include relevant case law or statute citations if present in the context
-7. Flag any potential legal risks or important considerations
+        case_brief = _load_case_brief()
+        case_section = (
+            f"\n\n---\n## ACTIVE CASE BRIEF\n\n{case_brief}\n---\n"
+            if case_brief else ""
+        )
 
-Always preface your response with a confidence level (High/Medium/Low) based on the completeness 
-of the information in the provided context."""
+        self.system_prompt = (
+            "You are a legal AI assistant working on an active pro se lawsuit in Texas. "
+            "Answer only from the provided document context and the case brief below. "
+            "Cite specific sections, statutes, dates, and dollar figures exactly as they appear. "
+            "If the context does not contain enough information to answer, say so and identify what is missing. "
+            "Never invent facts, citations, or legal holdings. "
+            "Flag inconsistencies between documents when you notice them. "
+            "Always state a confidence level (High / Medium / Low) at the start of your response."
+            + case_section
+        )
 
         self.context_template = """Based on the following legal document excerpts, please answer the question.
 

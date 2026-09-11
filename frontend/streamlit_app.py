@@ -30,10 +30,8 @@ st.set_page_config(
 )
 
 # Global configuration
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 AUTH_TOKEN = st.session_state.get("access_token", "")
-ADMIN_CREDENTIALS = {"username": "admin", "password": "admin123"}
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # Custom CSS for better styling
 st.markdown("""

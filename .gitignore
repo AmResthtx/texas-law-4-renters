@@ -1,2 +1,12 @@
 .DS_Store
 .env
+token.txt
+analytics.db
+*.db
+data/users.json
+data/chroma_db/
+logs/*.log
+__pycache__/
+*.pyc
+*.pyo
+.python-version

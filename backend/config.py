@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     enable_audit_logging: bool = Field(default=True, env="ENABLE_AUDIT_LOGGING")
     allowed_ips: Optional[str] = Field(default=None, env="ALLOWED_IPS")  # Comma-separated IPs
     
+    # Frontend URL for CORS (set to your Streamlit URL in production)
+    frontend_url: str = Field(default="http://localhost:8501", env="FRONTEND_URL")
+
     # n8n Integration
     n8n_webhook_url: Optional[str] = Field(default=None, env="N8N_WEBHOOK_URL")
     slack_webhook_url: Optional[str] = Field(default=None, env="SLACK_WEBHOOK_URL")

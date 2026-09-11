@@ -4,6 +4,9 @@ llama-index
 chromadb
 streamlit
 sentence-transformers
+scikit-learn
+plotly
+slowapi
 pydantic
 pydantic-settings
 python-jose[cryptography]

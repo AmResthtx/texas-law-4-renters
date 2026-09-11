@@ -26,7 +26,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Pydantic models
 class UserCreate(BaseModel):
     username: str
-    email: str
+    email: Optional[str] = None
     password: str
     role: str = "user"  # user, admin, lawyer
 

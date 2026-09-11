@@ -6,11 +6,14 @@ import logging
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Depends, status, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Depends, status, File, UploadFile, Form, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import uvicorn
 
 # Add path for imports
@@ -25,6 +28,7 @@ logger = logging.getLogger(__name__)
 from backend.config import settings
 from backend.auth import user_manager, create_access_token, User, get_current_user, get_current_active_user
 from vector_store.chromadb_setup import chroma_manager
+from security.audit_log import log_login, log_query, log_document_upload, log_document_delete
 
 # Try to import the enhanced document processor for Phase 4
 try:
@@ -51,6 +55,9 @@ try:
 except Exception as e:
     logger.warning(f"Failed to import RAG pipeline: {e}")
     get_rag_pipeline = None
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # HTTPBearer for JWT tokens
 security = HTTPBearer()
@@ -88,10 +95,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS — locked to the configured frontend URL (wildcard only in debug mode)
+_cors_origins = (
+    ["*"] if settings.debug
+    else [settings.frontend_url, "http://localhost:8501"]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -183,17 +197,21 @@ async def health_check():
 
 # Authentication endpoints
 @app.post("/auth/login")
-async def login(request: LoginRequest):
+@limiter.limit("10/minute")
+async def login(request: Request, request_body: LoginRequest):
     """User login."""
+    client_ip = request.client.host if request.client else "unknown"
     try:
-        user = user_manager.authenticate_user(request.username, request.password)
+        user = user_manager.authenticate_user(request_body.username, request_body.password)
         if not user:
+            log_login(request_body.username, client_ip, success=False)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
+        log_login(user["username"], client_ip, success=True)
         access_token = create_access_token(data={"sub": user["username"]})
         return {
             "access_token": access_token,
@@ -205,6 +223,8 @@ async def login(request: LoginRequest):
                 "is_active": user["is_active"]
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Login error: {e}")
         raise HTTPException(
@@ -497,7 +517,9 @@ async def upload_document(
 
 # RAG Query endpoints
 @app.post("/query", response_model=RAGQueryResponse)
+@limiter.limit("30/minute")
 async def query_documents(
+    http_request: Request,
     request: RAGQueryRequest,
     current_user: User = Depends(get_current_active_user)
 ):
@@ -585,7 +607,9 @@ async def query_documents(
 
 # Alternative query endpoint for frontend compatibility
 @app.post("/documents/query")
+@limiter.limit("30/minute")
 async def query_documents_alt(
+    http_request: Request,
     request: dict,
     current_user: User = Depends(get_current_active_user)
 ):

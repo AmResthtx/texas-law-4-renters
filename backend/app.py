@@ -173,18 +173,23 @@ async def health_check():
     except Exception:
         services["chromadb"] = "unhealthy"
     
-    # Check model endpoint (if configured)
+    # Check model endpoint (Ollama or vLLM)
     if settings.model_endpoint:
         try:
             import httpx
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{settings.model_endpoint}/health")
+                # Ollama exposes /api/tags; vLLM exposes /health
+                is_ollama = "11434" in settings.model_endpoint
+                check_url = (f"{settings.model_endpoint}/api/tags" if is_ollama
+                             else f"{settings.model_endpoint}/health")
+                response = await client.get(check_url)
                 if response.status_code == 200:
-                    services["model"] = "healthy"
+                    backend = "ollama" if is_ollama else "vllm"
+                    services["model"] = f"healthy ({backend}:{settings.model_name})"
                 else:
                     services["model"] = "unhealthy"
         except Exception:
-            services["model"] = "checking..."
+            services["model"] = "offline"
     else:
         services["model"] = "not_configured"
     

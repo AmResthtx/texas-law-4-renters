@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     chromadb_host: str = Field(default="localhost", env="CHROMADB_HOST")
     chromadb_port: int = Field(default=8002, env="CHROMADB_PORT")
     chromadb_collection_name: str = Field(default="legal_documents", env="CHROMADB_COLLECTION")
+    chroma_persist_dir: str = Field(default="./data/chroma_db", env="CHROMA_PERSIST_DIR")
+    users_file: str = Field(default="data/users.json", env="USERS_FILE")
     
     # Model Settings
     model_endpoint: str = Field(default="http://localhost:8001", env="MODEL_ENDPOINT")

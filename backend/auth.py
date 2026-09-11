@@ -57,15 +57,11 @@ class Token(BaseModel):
     user: User
 
 
-# Simple file-based user store (in production, use a proper database)
-USERS_FILE = "data/users.json"
-
-
 class UserManager:
     """Simple user management system."""
-    
+
     def __init__(self):
-        self.users_file = USERS_FILE
+        self.users_file = settings.users_file
         self._ensure_data_dir()
         self._ensure_admin_user()
     

@@ -36,7 +36,7 @@ class ChromaDBManager:
         self.client = None
         self.collection = None
         self.collection_name = settings.chromadb_collection_name
-        self.db_path = "./data/chroma_db"
+        self.db_path = settings.chroma_persist_dir
         self._connect()
     
     def _connect(self):

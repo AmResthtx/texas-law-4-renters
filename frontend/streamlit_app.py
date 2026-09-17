@@ -31,6 +31,11 @@ st.set_page_config(
 
 # Global configuration
 API_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = API_BASE_URL
+
+# Single-user auto-login credentials (override with env vars if needed)
+AUTO_LOGIN_USER = os.getenv("AUTO_LOGIN_USER", "admin")
+AUTO_LOGIN_PASS = os.getenv("AUTO_LOGIN_PASS", "admin123")
 AUTH_TOKEN = st.session_state.get("access_token", "")
 
 # Custom CSS for better styling
@@ -205,8 +210,8 @@ def show_login_page():
         st.markdown("### 🔐 Authentication")
         
         with st.form("login_form"):
-            username = st.text_input("Username", value="admin")
-            password = st.text_input("Password", type="password", value="admin123")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
             submit_button = st.form_submit_button("Login", type="primary")
             
             if submit_button:
@@ -226,20 +231,13 @@ def show_login_page():
                 else:
                     st.error("Please enter both username and password")
         
-        # Quick login help
         st.markdown("""
         ---
-        **Demo Credentials:**
-        - Username: `admin`
-        - Password: `admin123`
-        
         **System Features:**
         - 📄 Upload legal documents
         - 🤖 AI-powered document analysis
         - 💬 Interactive chat interface
         - 📊 Document management
-        
-        **Note:** Session expires on page refresh. Please avoid refreshing the page.
         """)
 
 def show_main_interface():
@@ -343,7 +341,7 @@ def show_document_upload():
     with col1:
         uploaded_file = st.file_uploader(
             "Choose a legal document",
-            type=['txt', 'pdf', 'doc', 'docx'],
+            type=['txt', 'md', 'pdf', 'doc', 'docx'],
             help="Upload legal documents for AI analysis. Currently optimized for text files."
         )
         
@@ -605,7 +603,7 @@ def show_files_management():
     with st.expander("📤 Upload New Document", expanded=False):
         uploaded_file = st.file_uploader(
             "Choose a file", 
-            type=['txt', 'pdf', 'docx'],
+            type=['txt', 'md', 'pdf', 'docx'],
             help="Supported formats: PDF, DOCX, TXT"
         )
         
@@ -1516,32 +1514,31 @@ def main():
     st.sidebar.title("⚖️ Local Legal AI")
     st.sidebar.markdown("*Phase 4 - Enhanced Analytics & RAG*")
     
-    # Initialize session state variables
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if "access_token" not in st.session_state:
-        st.session_state.access_token = None
-    if "user_info" not in st.session_state:
-        st.session_state.user_info = {}
-    
-    # Validate existing token if present
-    if st.session_state.authenticated and st.session_state.access_token:
+    # Single-user local setup: auto-login once per session
+    if "access_token" not in st.session_state or not st.session_state.access_token:
         try:
-            headers = {"Authorization": f"Bearer {st.session_state.access_token}"}
-            response = requests.get(f"{BACKEND_URL}/auth/me", headers=headers)
-            if response.status_code != 200:
-                # Token expired or invalid, reset session
-                st.session_state.authenticated = False
-                st.session_state.access_token = None
-                st.session_state.user_info = {}
-        except:
-            # Network error, assume token is still valid
-            pass
-    
-    # Authentication check
-    if not st.session_state.authenticated:
-        show_login_page()
-        return
+            resp = requests.post(
+                f"{BACKEND_URL}/auth/login",
+                json={"username": AUTO_LOGIN_USER, "password": AUTO_LOGIN_PASS},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                st.session_state.authenticated = True
+                st.session_state.access_token = data["access_token"]
+                st.session_state.user_info = data["user"]
+            else:
+                st.error(f"Backend login failed ({resp.status_code}). Is the backend running?")
+                show_login_page()
+                return
+        except Exception as e:
+            st.error(f"Cannot reach backend at {BACKEND_URL}. Start it with: python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000")
+            show_login_page()
+            return
+
+    if "user_info" not in st.session_state:
+        st.session_state.user_info = {"username": AUTO_LOGIN_USER, "role": "admin"}
+    st.session_state.authenticated = True
     
     # Handle navigation from button clicks BEFORE creating the widget
     if "navigate_to" in st.session_state:

@@ -15,6 +15,13 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import uvicorn
+import io
+
+try:
+    import PyPDF2
+    HAS_PYPDF2 = True
+except ImportError:
+    HAS_PYPDF2 = False
 
 # Add path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -369,7 +376,7 @@ async def upload_document(
     elif filename.lower().endswith('.docx'):
         content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         logger.info(f"Corrected content type for {filename}: {content_type}")
-    elif filename.lower().endswith('.txt'):
+    elif filename.lower().endswith('.txt') or filename.lower().endswith('.md'):
         content_type = 'text/plain'
     
     logger.info(f"Processing file: {filename}, Content type: {content_type}")
@@ -388,11 +395,11 @@ async def upload_document(
             )
     else:
         # Fallback validation
-        allowed_types = ["text/plain"]
+        allowed_types = ["text/plain", "application/pdf"]
         if content_type not in allowed_types:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type: {content_type}. Enhanced processor not available."
+                detail=f"Unsupported file type: {content_type}. Supported: txt, md, pdf."
             )
     
     try:
@@ -434,7 +441,29 @@ async def upload_document(
         else:
             # Fallback to simple text processing
             if content_type == "text/plain":
-                text_content = content.decode('utf-8')
+                text_content = content.decode('utf-8', errors='ignore')
+            elif content_type == "application/pdf":
+                if not HAS_PYPDF2:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="PyPDF2 not installed. Run: pip install PyPDF2"
+                    )
+                try:
+                    reader = PyPDF2.PdfReader(io.BytesIO(content))
+                    pages = [page.extract_text() or "" for page in reader.pages]
+                    text_content = "\n\n".join(pages)
+                    if not text_content.strip():
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Could not extract text from PDF. The file may be scanned/image-based."
+                        )
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"PDF processing failed: {str(e)}"
+                    )
             else:
                 try:
                     text_content = content.decode('utf-8', errors='ignore')
@@ -453,12 +482,11 @@ async def upload_document(
                 "file_size": len(content)
             }
         
-        # Validate that we have actual text content, not binary data
-        if text_content and text_content.startswith('%PDF'):
-            logger.error(f"ERROR: Text content appears to be raw PDF binary data for {filename}")
+        # Validate that we have actual text content
+        if not text_content or not text_content.strip():
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="PDF text extraction failed - raw binary data detected"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No text content could be extracted from the file."
             )
         
         # Get embedder and process document
@@ -628,7 +656,7 @@ async def query_documents_alt(
         )
         
         # Use the main query function
-        response = await query_documents(rag_request, current_user)
+        response = await query_documents(http_request, rag_request, current_user)
         
         # Convert response to expected format
         return {
